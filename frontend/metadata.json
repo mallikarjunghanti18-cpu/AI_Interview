@@ -1,0 +1,6 @@
+{
+  "name": "AI Interviewer",
+  "description": "AI-powered mock interview application that analyzes job descriptions, generates tailored questions, evaluates answers, and delivers comprehensive performance reports.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

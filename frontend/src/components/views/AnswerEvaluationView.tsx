@@ -106,19 +106,19 @@ export const AnswerEvaluationView: React.FC<AnswerEvaluationViewProps> = ({
           <div className="text-center">
             <span className="text-[11px] text-[#737686] block">Precision</span>
             <span className="font-mono text-[12px] font-semibold text-[#0b1c30]">
-              {evaluation.precision_pct}%
+              {evaluation.precision_pct ?? 0}%
             </span>
           </div>
           <div className="text-center border-l border-[#c3c6d7]/30">
             <span className="text-[11px] text-[#737686] block">Depth</span>
             <span className="font-mono text-[12px] font-semibold text-[#0b1c30]">
-              {evaluation.depth_pct}%
+              {evaluation.depth_pct ?? 0}%
             </span>
           </div>
           <div className="text-center border-l border-[#c3c6d7]/30">
             <span className="text-[11px] text-[#737686] block">Clarity</span>
             <span className="font-mono text-[12px] font-semibold text-[#0b1c30]">
-              {evaluation.clarity_pct}%
+              {evaluation.clarity_pct ?? 0}%
             </span>
           </div>
         </div>
@@ -137,7 +137,7 @@ export const AnswerEvaluationView: React.FC<AnswerEvaluationViewProps> = ({
             </h3>
           </div>
           <div className="space-y-2">
-            {evaluation.strengths.map((st, i) => (
+            {(evaluation.strengths ?? []).map((st, i) => (
               <div key={i} className="flex items-start gap-2 bg-[#eff4ff]/70 rounded-lg p-2.5">
                 <span className="material-symbols-outlined text-[#004ac6] text-[16px] shrink-0 mt-0.5">
                   check_circle
@@ -159,7 +159,7 @@ export const AnswerEvaluationView: React.FC<AnswerEvaluationViewProps> = ({
             </h3>
           </div>
           <div className="space-y-2">
-            {evaluation.areas_for_improvement.map((area, i) => (
+            {(evaluation.areas_for_improvement ?? evaluation.missing_points ?? []).map((area, i) => (
               <div key={i} className="flex items-start gap-2 bg-[#eff4ff]/70 rounded-lg p-2.5">
                 <span className="material-symbols-outlined text-[#4b41e1] text-[16px] shrink-0 mt-0.5">
                   info
@@ -179,12 +179,12 @@ export const AnswerEvaluationView: React.FC<AnswerEvaluationViewProps> = ({
               </div>
               <h3 className="text-[14px] font-semibold text-[#0b1c30]">Evaluator Assessment</h3>
             </div>
-            <span className="font-mono text-[10px] text-[#737686]">{evaluation.rubric_level}</span>
+            <span className="font-mono text-[10px] text-[#737686]">{evaluation.rubric_level ?? (evaluation.score >= 7 ? "Good" : "Needs improvement")}</span>
           </div>
 
           <div className="rounded-lg bg-[#eff4ff] p-3 relative overflow-hidden border-l-4 border-[#004ac6]">
             <p className="text-[13px] text-[#0b1c30] leading-relaxed italic">
-              {evaluation.evaluator_assessment}
+              {evaluation.evaluator_assessment ?? evaluation.feedback ?? "No feedback available."}
             </p>
           </div>
         </div>

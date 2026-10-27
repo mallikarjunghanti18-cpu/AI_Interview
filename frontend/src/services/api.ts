@@ -472,8 +472,48 @@ public async submitAnswer(
       clearTimeout(timeout);
 
       if (response.ok) {
-        return await response.json();
-      }
+  const data = await response.json();
+
+  // If the backend already returns the expected format
+  if (
+    data.overall_score_pct !== undefined &&
+    data.candidate_verdict !== undefined
+  ) {
+    return data as InterviewResultResponse;
+  }
+
+  // Convert the backend response to the frontend report format
+  if (data.percentage !== undefined) {
+    const report = generateFinalReport(
+      sessionId,
+      jobTitle,
+      candidateAnswers,
+      this.sessionQuestionsMap.get(sessionId),
+      candidateName,
+      durationSeconds
+    );
+
+    return {
+      ...report,
+      session_id: data.session_id ?? sessionId,
+      job_title: data.job_title ?? jobTitle,
+      overall_score_pct: Number(data.percentage) || 0,
+      total_points: Number(data.total_score) || 0,
+      max_points: Number(data.maximum_score) || 0,
+      questions_answered: Number(data.answered_questions) || 0,
+      total_questions:
+        Number(data.total_questions) || report.total_questions,
+      candidate_verdict: String(
+        data.overall_feedback ?? report.candidate_verdict
+      ),
+      ai_recommendations: Array.isArray(data.recommendations)
+        ? data.recommendations.join(" ")
+        : report.ai_recommendations,
+    };
+  }
+
+  throw new Error("Unexpected interview result format");
+}
     } catch {
       // Fallback
     }

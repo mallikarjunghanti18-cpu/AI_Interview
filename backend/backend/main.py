@@ -1,9 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+import os
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from google import genai
 from dotenv import load_dotenv
 import uuid
+
 
 
 # -------------------------
@@ -12,14 +15,22 @@ import uuid
 
 load_dotenv()
 
-client = genai.Client()
+env_path = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(env_path)
+
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
+
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -56,7 +67,6 @@ class InterviewQuestion(BaseModel):
     difficulty: str
 
 
-
 class AnswerEvaluation(BaseModel):
     score: int
     correct: bool
@@ -64,7 +74,6 @@ class AnswerEvaluation(BaseModel):
     missing_points: list[str]
     feedback: str
     follow_up_needed: bool
-
 
 
 class AnswerRequest(BaseModel):
@@ -213,7 +222,8 @@ Rules:
 - Use technical, scenario-based, and behavioral questions.
 - The total number of questions must be exactly 10.
 - Technical + scenario + behavioral questions must equal 10.
-- Difficulty must contain Easy, Medium, and Hard.
+- Difficulty must be Easy, Medium, or Hard.
+
 """
 
     response = client.models.generate_content(
@@ -337,8 +347,7 @@ Rules:
 
 7. Label each question with its difficulty using the existing response schema: Easy, Medium, Hard, or Very Hard.
 
-8. Keep the overall interview challenging but fair. Do not give fresher-level candidates senior architect questions, and do not make senior candidates answer only basic definitions..
-
+8. Keep the overall interview challenging but fair. Do not give fresher-level candidates senior architect questions, and do not make senior candidates answer only basic definitions.
 """
 
     response = client.models.generate_content(
@@ -405,16 +414,15 @@ CANDIDATE ANSWER:
 Evaluate the answer fairly for a fresher.
 
 Rules:
-**Strict Answer Evaluation Rules**
-
-1. Evaluate the answer against the actual interview question and its expected technical concepts.
-2. Detect gibberish, random characters, irrelevant text, and repeated words.
-3. If the answer is meaningless or unrelated, assign a score of **0–1 out of 10**.
-4. Do not award points merely because the answer contains many words or sounds confident.
-5. Award points only for technically correct, relevant information.
-6. An answer that is empty, gibberish, or completely unrelated must never receive a score above 1/10.
-7. Provide constructive feedback explaining what essential concepts were missing.
-8. Score precision, depth, and clarity consistently with the overall score.
+- Give a score from 0 to 10.
+- Check whether the answer is technically correct.
+- Identify what the candidate did well.
+- Identify important missing points.
+- Give simple and constructive feedback.
+- Do not expect advanced knowledge from a fresher.
+- Set follow_up_needed to true if the answer is incorrect,
+  incomplete, or needs clarification.
+- Set follow_up_needed to false if the answer is sufficiently correct.
 """
 
     response = client.models.generate_content(
@@ -474,7 +482,6 @@ def start_interview(request: StartInterviewRequest):
 # =========================================================
 
 
-
 @app.post("/next-question")
 def next_question(request: NextQuestionRequest):
 
@@ -488,7 +495,7 @@ def next_question(request: NextQuestionRequest):
         return {"error": "Interview session not found"}
 
     print("DEBUG: Session found:", request.session_id)
-    print("DEBUG: Returning question index:", session.current_question)   
+    print("DEBUG: Returning question index:", session.current_question)
     print("DEBUG: Total questions:", session.total_questions)
 
     if session.current_question > session.total_questions:
@@ -559,7 +566,7 @@ Rules:
             status_code=502,
             detail="AI did not return a valid interview question"
         )
-        
+
     session.current_question += 1
 
     session.questions_asked.append({
@@ -581,31 +588,33 @@ Rules:
         "question_text": question.question
     }
 
-
-
 # =========================================================
 # SUBMIT ANSWER
 # =========================================================
 
-
 @app.post("/submit-answer")
 def submit_answer(request: SubmitAnswerRequest):
-    import time
-
-    start_time = time.time()
 
     session = interview_sessions.get(request.session_id)
 
     if session is None:
-        return {"error": "Interview session not found"}
+        return {
+            "error": "Interview session not found"
+        }
 
+    # Make sure a question exists
     if not session.questions_asked:
-        return {"error": "No question has been asked yet"}
+        return {
+            "error": "No question has been asked yet"
+        }
 
+    # Get latest question
     current_question = session.questions_asked[-1]
 
     prompt = f"""
-You are an experienced job interviewer evaluating a fresher.
+You are an experienced job interviewer.
+
+Evaluate the candidate's answer.
 
 QUESTION:
 {current_question["question"]}
@@ -622,7 +631,10 @@ DIFFICULTY:
 CANDIDATE ANSWER:
 {request.candidate_answer}
 
-**Strict Answer Evaluation Rules**
+Evaluate the answer fairly for a fresher.
+
+Rules:
+-**Strict Answer Evaluation Rules**
 
 1. Evaluate the answer against the actual interview question and its expected technical concepts.
 2. Detect gibberish, random characters, irrelevant text, and repeated words.
@@ -645,65 +657,62 @@ CANDIDATE ANSWER:
 
     evaluation = response.parsed
 
-    if evaluation is None:
-        return {"error": "Could not evaluate the answer. Please try again."}
+    # -------------------------------------------------
+    # SAVE ANSWER + EVALUATION
+    # -------------------------------------------------
 
-    score = max(0, min(10, evaluation.score))
-    latency_seconds = round(time.time() - start_time, 2)
-
-    # Save the answer and evaluation.
     session.answers.append({
-        "question_number": session.current_question,
-        "question": current_question["question"],
-        "candidate_answer": request.candidate_answer,
-        "score": score,
-        "correct": evaluation.correct,
-        "topic": current_question["topic"],
-        "category": current_question["category"],
-        "difficulty": current_question["difficulty"],
-        "strengths": evaluation.strengths,
-        "missing_points": evaluation.missing_points,
-        "feedback": evaluation.feedback,
-        "follow_up_needed": evaluation.follow_up_needed
-    })
+    "question_number": current_question["question_number"],
+    "question": current_question["question"],
+    "candidate_answer": request.candidate_answer,
 
-    # Decide whether to ask a follow-up or move forward.
+    "score": evaluation.score,
+    "correct": evaluation.correct,
+
+    "topic": current_question["topic"],
+    "category": current_question["category"],
+    "difficulty": current_question["difficulty"],
+
+    "strengths": evaluation.strengths,
+    "missing_points": evaluation.missing_points,
+    "feedback": evaluation.feedback,
+    "follow_up_needed": evaluation.follow_up_needed
+})
+
+    # -------------------------------------------------
+    # DECIDE NEXT ACTION
+    # -------------------------------------------------
+
     if evaluation.follow_up_needed:
+
         next_action = "follow_up"
+
     else:
+
         session.current_question += 1
 
+        # If all questions are answered
         if session.current_question > session.total_questions:
+
             session.status = "completed"
-            next_action = "complete"
+            next_action = "completed"
+
         else:
+
             next_action = "next_question"
 
-    # Return the structure expected by the frontend.
     return {
-        "score": score,
-        "max_score": 10,
-        "verdict": (
-            "Correct" if evaluation.correct
-            else "Needs Improvement"
-        ),
-        "precision_pct": score * 10,
-        "depth_pct": score * 10,
-        "clarity_pct": score * 10,
-        "strengths": evaluation.strengths,
-        "areas_for_improvement": evaluation.missing_points,
-        "evaluator_assessment": evaluation.feedback,
-        "latency_seconds": latency_seconds,
-        "rubric_level": (
-            "Excellent" if score >= 9
-            else "Good" if score >= 7
-            else "Developing" if score >= 5
-            else "Needs Practice"
-        ),
-        "follow_up_generated": None,
+        "question_number": current_question["question_number"],
+        "evaluation": {
+            "score": evaluation.score,
+            "correct": evaluation.correct,
+            "strengths": evaluation.strengths,
+            "missing_points": evaluation.missing_points,
+            "feedback": evaluation.feedback,
+            "follow_up_needed": evaluation.follow_up_needed
+        },
         "next_action": next_action
     }
-
 
 
 # =========================================================
@@ -919,6 +928,12 @@ def interview_result(session_id: str):
         "total_score": total_score,
         "maximum_score": maximum_score,
         "percentage": percentage,
+
+# Field names expected by the frontend
+        "total_points": total_score,
+        "max_points": maximum_score,
+        "overall_score_pct": percentage,
+        "questions_answered": answered_questions, 
 
         "correct_answers": correct_answers,
         "incorrect_answers": incorrect_answers,

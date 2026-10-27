@@ -270,7 +270,11 @@ const handleNextQuestion = async () => {
       benchmark_score_pct: reportRes.overall_score_pct,
       score_ratio_str: `${(reportRes.overall_score_pct / 10).toFixed(1)}/10`,
       question_volume: reportRes.questions_answered || reportRes.total_questions,
-      badge_text: reportRes.candidate_verdict.split('/')[0].trim(),
+      badge_text: (
+        reportRes.candidate_verdict ??
+        reportRes.overall_feedback ??
+        "Interview Completed"
+      ).split('/')[0].trim(),
       badge_color: reportRes.overall_score_pct >= 80 ? 'secondary' : 'primary',
       status: 'Completed',
       result: reportRes
